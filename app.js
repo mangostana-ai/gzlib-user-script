@@ -5,7 +5,6 @@
 // @description  查询广州图书馆可借阅馆藏
 // @author       https://honwhy.wang
 // @match        https://book.douban.com/subject/*
-// @icon         <$ICON$>
 // @grant        GM.xmlHttpRequest
 // ==/UserScript==
 
