@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         豆瓣x广州图书馆
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.2.1
 // @description  查询广州图书馆可借阅馆藏
 // @author       https://honwhy.wang
+// @license      GPLv3
 // @match        https://book.douban.com/subject/*
 // @grant        GM.xmlHttpRequest
+// @connect      opac.gzlib.org.cn
 // ==/UserScript==
 
 (function() {
@@ -57,6 +59,8 @@
                             if(nos && nos.length > 0) {
                                 getBorrowable(nos.join(','));
                             }
+                        } else {
+                            showResult({});
                         }
                     }
                 }
@@ -84,6 +88,7 @@
                     var text = response.responseText;
                     var json = JSON.parse(text);
                     let nameToCount = {};
+                    var bookrecno = '';
                     if (json && json['previews']) {
                         Object.keys(json['previews']).forEach(key => {
                             // item => {bookrecno: 3005135912, callno: 'I247.57/10039', curlib: 'NS', curlibName: '南沙区图书馆', curlocal: 'NS-LHZTSS', …}
@@ -96,38 +101,68 @@
                                         nameToCount[item.curlibName] = item.loanableCount;
                                     }
                                 }
+                                bookrecno = item.bookrecno;
                             });
                         })
 
                     }
-                    // set to html
-                    var aside = document.querySelector(".aside");
-
-                    var gray = document.createElement('div');
-                    gray.classList = 'gray_ad version_works';
-                    var h2 = document.createElement('h2');
-                    h2.textContent = '广州图书馆可借馆藏';
-                    gray.appendChild(h2);
-                    var ul = document.createElement('ul');
-                    Object.keys(nameToCount).forEach(key => {
-                        var cnt = nameToCount[key];
-                        var li = document.createElement('li');
-                        li.styleList = 'mb8 pl';
-                        var a = document.createElement('a');
-                        a.href = 'javascript:void(0)';
-                        a.textContent = `${key} (${cnt})`;
-                        li.appendChild(a);
-
-                        ul.appendChild(li);
-                    })
-                    gray.appendChild(ul);
-
-                    aside.prepend(gray);
+                    showResult(nameToCount, bookrecno);
                 }
             })
         } catch(e) {
 
         }
 
+    }
+
+    function showResult(nameToCount, bookrecno) {
+        // set to html
+        var aside = document.querySelector(".aside");
+
+        var gray = document.createElement('div');
+        gray.classList = 'gray_ad version_works';
+        gray.style.display = 'block';
+        var h2 = document.createElement('h2');
+        h2.textContent = '广州图书馆可借馆藏（非官方）';
+        gray.appendChild(h2);
+        if(Object.keys(nameToCount).length == 0) {
+            var ul = document.createElement("ul");
+            ul.classList = "bs current-version-list";
+            var wrapper = document.createElement("div");
+            wrapper.classList = "cell price-btn-wrapper";
+            ul.appendChild(wrapper);
+            var buyInfo = document.createElement("div");
+            buyInfo.classList = "cell impression_track_mod_buyinfo";
+            wrapper.appendChild(buyInfo);
+            var cell = document.createElement("div");
+            cell.classList="cell";
+            buyInfo.appendChild(cell);
+            var a = document.createElement("a");
+            a.classList="buy-book-btn e-book-btn";
+            cell.appendChild(a);
+            var span = document.createElement("span");
+            span.textContent = "暂无查询结果";
+            a.appendChild(span);
+
+            gray.appendChild(ul);
+        } else {
+            var ul = document.createElement('ul');
+            let url = `https://opac.gzlib.org.cn/opac/book/${bookrecno}`;
+            Object.keys(nameToCount).forEach(key => {
+                var cnt = nameToCount[key];
+                var li = document.createElement('li');
+                li.styleList = 'mb8 pl';
+                var a = document.createElement('a');
+                a.href = url;
+                a.textContent = `${key} (${cnt})`;
+                li.appendChild(a);
+
+                ul.appendChild(li);
+            })
+            gray.appendChild(ul);
+        }
+        
+
+        aside.prepend(gray);
     }
 })();
