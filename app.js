@@ -1,7 +1,8 @@
 // ==UserScript==
-// @name         豆瓣x广州图书馆
+// @name         Douban_Gzlib
+// @name:zh-CN   豆瓣x广州图书馆
 // @namespace    http://tampermonkey.net/
-// @version      0.2.1
+// @version      0.2.2
 // @description  查询广州图书馆可借阅馆藏
 // @author       https://honwhy.wang
 // @license      GPLv3
@@ -10,7 +11,7 @@
 // @connect      opac.gzlib.org.cn
 // ==/UserScript==
 
-(function() {
+(async () => {
     'use strict';
 
     const info = document.querySelector("#info")
@@ -19,11 +20,22 @@
     console.log(isbn)
     if(isbn) {
         console.log('begin to search')
-        getBooks({isbn: isbn});
-
+        let bookHtml = await getBooks({isbn: isbn});
+        var ms = bookHtml.match(/bookrecno=([0-9]+)/mg);
+        if(ms) {
+            var nos = ms.map(m => {
+                return m.split('=')[1];
+            });
+            if(nos && nos.length > 0) {
+                let nameToCount = await getBorrowable(nos.join(','));
+                showResult(nameToCount, nos[0]);
+            }
+        } else {
+            showResult({});
+        }
     }
 
-    function getBooks(request) {
+    async function getBooks(request) {
         let {isbn, title} = request;
         if (isbn == 0) {
             return {};
@@ -34,85 +46,69 @@
         } else {
             url = `https://opac.gzlib.org.cn/opac/search?searchWay0=isbn&q0=${isbn}&logical0=AND&searchWay1=&q1=&logical1=AND&searchWay2=&q2=&searchSource=reader&marcformat=&sortWay=score&sortOrder=desc&startPubdate=&endPubdate=&rows=10&hasholding=1&curlibcode=GT&curlibcode=YT&curlibcode=HZQ&curlibcode=LW&curlibcode=TH&curlibcode=BY&curlibcode=HP&curlibcode=PY&curlibcode=NS`;
         }
-        try {
-            //let response = GM.xmlHttpRequest(url, { mode: 'no-cors' });
-            // .then(r => r.text())
-            // .then(result => {
-            //     return result;
-            // })
-            //return response.text();
-            GM.xmlHttpRequest({
-                method: "POST",
-                url: url,
-                //data: "username=johndoe&password=xyz123",
-                //headers: {
-                //    "Content-Type": "application/x-www-form-urlencoded"
-                //},
-                onload: function(response) {
-                    if(response.status == 200) {
-                        var text = response.responseText;
-                        var ms = text.match(/bookrecno=([0-9]+)/mg);
-                        if(ms) {
-                            var nos = ms.map(m => {
-                                return m.split('=')[1];
-                            });
-                            if(nos && nos.length > 0) {
-                                getBorrowable(nos.join(','));
-                            }
-                        } else {
-                            showResult({});
+        return new Promise((resolve, reject) => {
+            try {
+                GM.xmlHttpRequest({
+                    method: "POST",
+                    url: url,
+                    //data: "username=johndoe&password=xyz123",
+                    //headers: {
+                    //    "Content-Type": "application/x-www-form-urlencoded"
+                    //},
+                    onload: function(response) {
+                        if(response.status == 200) {
+                            var text = response.responseText;
+                            return resolve(text);
                         }
+                        return reject(Error("failed"))
                     }
-                }
-            });
-        } catch(e){
-            console.log(e)
-        }
+                });
+            } catch(e){
+                return reject(Error("something bad happened"))
+            }
+        })
 
     }
-    function getBorrowable(item) {
+    async function getBorrowable(item) {
         let url = `https://opac.gzlib.org.cn/opac/book/holdingPreviews?bookrecnos=${item}&curLibcodes=HZQ%2CGT%2CLW%2CYT%2CPY%2CHP%2CBY%2CNS%2CTH&return_fmt=json`;
         var text = '{}';
-        try {
-            GM.xmlHttpRequest({
-                method: "POST",
-                url: url,
-                //data: "username=johndoe&password=xyz123",
-                //headers: {
-                //    "Content-Type": "application/x-www-form-urlencoded"
-                //},
-                onload: function(response) {
-                    if(response.status != 200) {
-                        return false;
-                    }
-                    var text = response.responseText;
-                    var json = JSON.parse(text);
-                    let nameToCount = {};
-                    var bookrecno = '';
-                    if (json && json['previews']) {
-                        Object.keys(json['previews']).forEach(key => {
-                            // item => {bookrecno: 3005135912, callno: 'I247.57/10039', curlib: 'NS', curlibName: '南沙区图书馆', curlocal: 'NS-LHZTSS', …}
-                            var a = json['previews'][key];
-                            a.forEach(item => {
-                                if(item.loanableCount > 0) {
-                                    if(nameToCount[item.curlibName]) {
-                                        nameToCount[item.curlibName] += item.loanableCount;
-                                    } else {
-                                        nameToCount[item.curlibName] = item.loanableCount;
+        return new Promise((resolve, reject) => {
+            try {
+                GM.xmlHttpRequest({
+                    method: "POST",
+                    url: url,
+                    onload: function(response) {
+                        if(response.status != 200) {
+                            return reject(Error("failed"));
+                        }
+                        var text = response.responseText;
+                        var json = JSON.parse(text);
+                        let nameToCount = {};
+                        var bookrecno = '';
+                        if (json && json['previews']) {
+                            Object.keys(json['previews']).forEach(key => {
+                                // item => {bookrecno: 3005135912, callno: 'I247.57/10039', curlib: 'NS', curlibName: '南沙区图书馆', curlocal: 'NS-LHZTSS', …}
+                                var a = json['previews'][key];
+                                a.forEach(item => {
+                                    if(item.loanableCount > 0) {
+                                        if(nameToCount[item.curlibName]) {
+                                            nameToCount[item.curlibName] += item.loanableCount;
+                                        } else {
+                                            nameToCount[item.curlibName] = item.loanableCount;
+                                        }
                                     }
-                                }
-                                bookrecno = item.bookrecno;
-                            });
-                        })
+                                    bookrecno = item.bookrecno;
+                                });
+                            })
 
+                        }
+                        return resolve(nameToCount);
                     }
-                    showResult(nameToCount, bookrecno);
-                }
-            })
-        } catch(e) {
-
-        }
-
+                })
+            } catch(e) {
+                return reject(Error("something bad happened"))
+            }
+        })
     }
 
     function showResult(nameToCount, bookrecno) {
